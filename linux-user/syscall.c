@@ -8626,6 +8626,16 @@ ssize_t do_guest_readlink(const char *pathname, char *buf, size_t bufsiz)
     } else {
         char reloc[PATH_MAX];
         ret = get_errno(readlink(relocate_path_at(AT_FDCWD, pathname, reloc, false), buf, bufsiz));
+        if (ret > 0) {
+            char tmp[PATH_MAX];
+            memcpy(tmp, buf, ret);
+            tmp[ret] = '\0';
+
+            restore_path(tmp, reloc);
+
+            snprintf(buf, bufsiz, "%s", reloc);
+            ret = MIN(strlen(reloc), bufsiz);
+        }
     }
 
     return ret;
@@ -10812,6 +10822,16 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
                 memcpy(p2, user, ret);
             } else {
                 ret = get_errno(readlinkat(arg1, relocate_path_at(arg1, p, reloc, false), p2, arg4));
+                if (ret > 0) {
+                    char tmp[PATH_MAX];
+                    memcpy(tmp, p2, ret);
+                    tmp[ret] = '\0';
+
+                    restore_path(tmp, reloc);
+
+                    snprintf(p2, arg4, "%s", reloc);
+                    ret = MIN(strlen(reloc), arg4);
+                }
             }
             unlock_user(p2, arg3, ret);
             unlock_user(p, arg2, 0);
