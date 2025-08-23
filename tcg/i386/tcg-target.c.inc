@@ -2123,7 +2123,10 @@ static HostAddress x86_guest_base = {
 #if defined(__x86_64__) && defined(__linux__)
 # include <asm/prctl.h>
 # include <sys/prctl.h>
-int arch_prctl(int code, unsigned long addr);
+int arch_prctl(int code, unsigned long addr)
+{
+    return syscall(SYS_arch_prctl, code, addr);
+}
 static inline int setup_guest_base_seg(void)
 {
     if (arch_prctl(ARCH_SET_GS, guest_base) == 0) {
