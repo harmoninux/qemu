@@ -1042,15 +1042,16 @@ have_xen_pci_passthrough = get_option('xen_pci_passthrough') \
 # You should also check if any of the glib.version() checks
 # below can also be removed.
 glib_req_ver = '>=2.66.0'
+# always link glib and gmodule statically on OHOS
 glib_pc = dependency('glib-2.0', version: glib_req_ver, required: true,
-                    method: 'pkg-config')
+                    method: 'pkg-config', static: true)
 glib_cflags = []
 if enable_modules
   gmodule = dependency('gmodule-export-2.0', version: glib_req_ver, required: true,
-                       method: 'pkg-config')
+                       method: 'pkg-config', static: true)
 elif get_option('plugins')
   gmodule = dependency('gmodule-no-export-2.0', version: glib_req_ver, required: true,
-                       method: 'pkg-config')
+                       method: 'pkg-config', static: true)
 else
   gmodule = not_found
 endif
