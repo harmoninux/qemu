@@ -47,7 +47,6 @@ static bool skip_relocation(const char* name)
         || strstr(name, "/sys/") == name
         || strcmp(name, "/sys") == 0
         || strcmp(name, "/etc/resolv.conf") == 0
-        || strcmp(name, "/etc/passwd") == 0
         || strcmp(name, "/dev") == 0
         || strstr(name, "/dev/") == name
     ;
