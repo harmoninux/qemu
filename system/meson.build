@@ -30,6 +30,7 @@ system_ss.add(files(
   'runstate.c',
   'tpm-hmp-cmds.c',
   'watchpoint.c',
+  'main.c'
 ))
 
 if have_tpm

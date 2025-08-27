@@ -1,6 +1,6 @@
 project('qemu', ['c'], meson_version: '>=1.5.0',
         default_options: ['warning_level=1', 'c_std=gnu11', 'cpp_std=gnu++11', 'b_colorout=auto',
-                          'b_staticpic=false', 'stdsplit=false', 'optimization=2', 'b_pie=true'],
+                          'b_staticpic=true', 'stdsplit=false', 'optimization=2', 'b_pie=true'],
         version: files('VERSION'))
 
 meson.add_devenv({ 'MESON_BUILD_ROOT' : meson.project_build_root() })
@@ -4240,6 +4240,7 @@ endif
 
 traceable = []
 emulators = {}
+single_binary_libs = []
 foreach target : target_dirs
   config_target = config_target_mak[target]
   target_name = config_target['TARGET_NAME']
@@ -4247,6 +4248,7 @@ foreach target : target_dirs
   arch_srcs = [config_target_h[target]]
   arch_deps = []
   c_args = ['-DCOMPILING_PER_TARGET',
+            '-DTARGET_ENTRY_POINT=' + target.replace('-', '_'),
             '-DCONFIG_TARGET="@0@-config-target.h"'.format(target),
   ]
   link_args = emulator_link_args
@@ -4400,14 +4402,12 @@ foreach target : target_dirs
     execs = [{
       'name': 'qemu-system-' + target_name,
       'win_subsystem': 'console',
-      'sources': files('system/main.c'),
       'dependencies': [sdl]
     }]
     if host_os == 'windows' and (sdl.found() or gtk.found())
       execs += [{
         'name': 'qemu-system-' + target_name + 'w',
         'win_subsystem': 'windows',
-        'sources': files('system/main.c'),
         'dependencies': [sdl]
       }]
     endif
@@ -4434,14 +4434,14 @@ foreach target : target_dirs
       exe_name += '-unsigned'
     endif
 
-    emulator = executable(exe_name, exe['sources'],
+    emulator = shared_library(exe_name,
                install: true,
                c_args: c_args,
                dependencies: arch_deps + exe['dependencies'],
                objects: lib.extract_all_objects(recursive: true),
                link_depends: [block_syms, qemu_syms],
-               link_args: link_args,
-               win_subsystem: exe['win_subsystem'])
+               link_args: link_args)
+    single_binary_libs += emulator
 
     if host_os == 'darwin'
       icon = 'pc-bios/qemu.rsrc'
@@ -5060,3 +5060,5 @@ if not actually_reloc and (host_os == 'windows' or get_option('relocatable'))
   message('QEMU will have to be installed under ' + get_option('prefix') + '.')
   message('Use --disable-relocatable to remove this warning.')
 endif
+
+executable('qemu', files('qemu.c'), link_with: single_binary_libs)

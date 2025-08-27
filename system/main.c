@@ -94,3 +94,9 @@ int main(int argc, char **argv)
         g_assert_not_reached();
     }
 }
+
+int TARGET_ENTRY_POINT(int argc, char **argv);
+int TARGET_ENTRY_POINT(int argc, char **argv)
+{
+    return main(argc, argv);
+}

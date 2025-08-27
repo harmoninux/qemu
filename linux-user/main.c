@@ -1036,3 +1036,9 @@ int main(int argc, char **argv, char **envp)
     /* never exits */
     return 0;
 }
+
+int TARGET_ENTRY_POINT(int argc, char **argv, char **envp);
+int TARGET_ENTRY_POINT(int argc, char **argv, char **envp)
+{
+    return main(argc, argv, envp);
+}
