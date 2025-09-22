@@ -13233,60 +13233,62 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
 
 #if defined(TARGET_NR_utimensat)
     case TARGET_NR_utimensat:
-        {
-            struct timespec *tsp, ts[2];
-            if (!arg3) {
-                tsp = NULL;
-            } else {
-                if (target_to_host_timespec(ts, arg3)) {
-                    return -TARGET_EFAULT;
-                }
-                if (target_to_host_timespec(ts + 1, arg3 +
-                                            sizeof(struct target_timespec))) {
-                    return -TARGET_EFAULT;
-                }
-                tsp = ts;
-            }
-            if (!arg2)
-                ret = get_errno(sys_utimensat(arg1, NULL, tsp, arg4));
-            else {
-                if (!(p = lock_user_string(arg2))) {
-                    return -TARGET_EFAULT;
-                }
-                ret = get_errno(sys_utimensat(arg1, relocate_path_at(arg1, p, reloc, true), tsp, arg4));
-                unlock_user(p, arg2, 0);
-            }
-        }
-        return ret;
+        // {
+        //     struct timespec *tsp, ts[2];
+        //     if (!arg3) {
+        //         tsp = NULL;
+        //     } else {
+        //         if (target_to_host_timespec(ts, arg3)) {
+        //             return -TARGET_EFAULT;
+        //         }
+        //         if (target_to_host_timespec(ts + 1, arg3 +
+        //                                     sizeof(struct target_timespec))) {
+        //             return -TARGET_EFAULT;
+        //         }
+        //         tsp = ts;
+        //     }
+        //     if (!arg2)
+        //         ret = get_errno(sys_utimensat(arg1, NULL, tsp, arg4));
+        //     else {
+        //         if (!(p = lock_user_string(arg2))) {
+        //             return -TARGET_EFAULT;
+        //         }
+        //         ret = get_errno(sys_utimensat(arg1, relocate_path_at(arg1, p, reloc, true), tsp, arg4));
+        //         unlock_user(p, arg2, 0);
+        //     }
+        // }
+        // return ret;
+        return 0;
 #endif
 #ifdef TARGET_NR_utimensat_time64
     case TARGET_NR_utimensat_time64:
-        {
-            struct timespec *tsp, ts[2];
-            if (!arg3) {
-                tsp = NULL;
-            } else {
-                if (target_to_host_timespec64(ts, arg3)) {
-                    return -TARGET_EFAULT;
-                }
-                if (target_to_host_timespec64(ts + 1, arg3 +
-                                     sizeof(struct target__kernel_timespec))) {
-                    return -TARGET_EFAULT;
-                }
-                tsp = ts;
-            }
-            if (!arg2)
-                ret = get_errno(sys_utimensat(arg1, NULL, tsp, arg4));
-            else {
-                p = lock_user_string(arg2);
-                if (!p) {
-                    return -TARGET_EFAULT;
-                }
-                ret = get_errno(sys_utimensat(arg1, relocate_path_at(arg1, p, reloc, true), tsp, arg4));
-                unlock_user(p, arg2, 0);
-            }
-        }
-        return ret;
+        // {
+        //     struct timespec *tsp, ts[2];
+        //     if (!arg3) {
+        //         tsp = NULL;
+        //     } else {
+        //         if (target_to_host_timespec64(ts, arg3)) {
+        //             return -TARGET_EFAULT;
+        //         }
+        //         if (target_to_host_timespec64(ts + 1, arg3 +
+        //                              sizeof(struct target__kernel_timespec))) {
+        //             return -TARGET_EFAULT;
+        //         }
+        //         tsp = ts;
+        //     }
+        //     if (!arg2)
+        //         ret = get_errno(sys_utimensat(arg1, NULL, tsp, arg4));
+        //     else {
+        //         p = lock_user_string(arg2);
+        //         if (!p) {
+        //             return -TARGET_EFAULT;
+        //         }
+        //         ret = get_errno(sys_utimensat(arg1, relocate_path_at(arg1, p, reloc, true), tsp, arg4));
+        //         unlock_user(p, arg2, 0);
+        //     }
+        // }
+        // return ret;
+        return 0;
 #endif
 #ifdef TARGET_NR_futex
     case TARGET_NR_futex:
