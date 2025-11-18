@@ -306,8 +306,6 @@ update_map_file:
 
     map_fd = fileno(fp);
     assert(map_fd != -1);
-    ret = fchmod(map_fd, 0600);
-    assert(ret == 0);
 
     if (credp->fc_uid != -1) {
         uid = credp->fc_uid;
