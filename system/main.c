@@ -41,7 +41,7 @@
 #include <CoreFoundation/CoreFoundation.h>
 #endif
 
-static void *qemu_default_main(void *opaque)
+static int qemu_default_main(void *opaque)
 {
     int status;
 
@@ -52,7 +52,7 @@ static void *qemu_default_main(void *opaque)
     bql_unlock();
     replay_mutex_unlock();
 
-    exit(status);
+    return status;
 }
 
 int (*qemu_main)(void);
@@ -84,15 +84,8 @@ int main(int argc, char **argv)
     bql_unlock();
     replay_mutex_unlock();
 
-    if (qemu_main) {
-        QemuThread main_loop_thread;
-        qemu_thread_create(&main_loop_thread, "qemu_main",
-                           qemu_default_main, NULL, QEMU_THREAD_DETACHED);
-        return qemu_main();
-    } else {
-        qemu_default_main(NULL);
-        g_assert_not_reached();
-    }
+    int status = qemu_default_main(NULL);
+    return status;
 }
 
 int qemu_system_entry(int argc, char **argv);
