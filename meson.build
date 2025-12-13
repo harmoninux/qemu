@@ -1,6 +1,6 @@
 project('qemu', ['c'], meson_version: '>=1.5.0',
         default_options: ['warning_level=1', 'c_std=gnu11', 'cpp_std=gnu++11', 'b_colorout=auto',
-                          'b_staticpic=true', 'stdsplit=false', 'optimization=2'],
+                          'b_staticpic=true', 'stdsplit=false', 'optimization=2', 'b_pie=true'],
         version: files('VERSION'))
 
 meson.add_devenv({ 'MESON_BUILD_ROOT' : meson.project_build_root() })
@@ -1381,8 +1381,7 @@ zstd = not_found
 if not get_option('zstd').auto() or have_block
   zstd = dependency('libzstd', version: '>=1.4.0',
                     required: get_option('zstd'),
-                    method: 'pkg-config',
-                    static: true)
+                    method: 'pkg-config')
 endif
 qpl = not_found
 if not get_option('qpl').auto() or have_system
@@ -4499,7 +4498,7 @@ if xkbcommon.found()
 endif
 
 if have_tools
-  qemu_img = executable('qemu-img', [files('qemu-img.c'), hxdep],
+  qemu_img = shared_library('qemu-img', [files('qemu-img.c'), hxdep],
              link_args: '@block.syms', link_depends: block_syms,
              dependencies: [authz, block, crypto, io, qom, qemuutil], install: true)
   qemu_io = executable('qemu-io', files('qemu-io.c'),

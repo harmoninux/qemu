@@ -6006,3 +6006,9 @@ QEMU_IMG_VERSION
     /* not found */
     error_exit(argv[0], "Command not found: %s", cmdname);
 }
+
+int qemu_img_entry(int argc, char **argv);
+int qemu_img_entry(int argc, char **argv)
+{
+    return main(argc, argv);
+}
