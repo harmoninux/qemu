@@ -9720,7 +9720,7 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
     case TARGET_NR_mknod:
         if (!(p = lock_user_string(arg1)))
             return -TARGET_EFAULT;
-        ret = get_errno(mknod(p, arg2, arg3));
+        ret = get_errno(mknod(relocate_path_at(AT_FDCWD, p, reloc, false), arg2, arg3));
         unlock_user(p, arg1, 0);
         return ret;
 #endif
@@ -9728,7 +9728,7 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
     case TARGET_NR_mknodat:
         if (!(p = lock_user_string(arg2)))
             return -TARGET_EFAULT;
-        ret = get_errno(mknodat(arg1, p, arg3, arg4));
+        ret = get_errno(mknodat(arg1, relocate_path_at(arg1, p, reloc, false), arg3, arg4));
         unlock_user(p, arg2, 0);
         return ret;
 #endif
