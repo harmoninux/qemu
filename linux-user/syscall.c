@@ -12459,8 +12459,8 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
 #else
         if (!(p = lock_user_string(arg2)))
             return -TARGET_EFAULT;
-        ret = get_errno(fchownat(arg1, p, low2highuid(arg3),
-                                 low2highgid(arg4), arg5));
+        ret = get_errno(fchownat(arg1, relocate_path_at(arg1, p, reloc, true),
+                                 low2highuid(arg3), low2highgid(arg4), arg5));
         unlock_user(p, arg2, 0);
         return ret;
 #endif
