@@ -84,9 +84,8 @@ const char* do_relocate_path(const char* guest, char* out)
             strcpy(host_path, guest + strlen("/mnt/host-root"));
         }
         else {
-            //  absolute
+            //  absolute (guest already starts with '/')
             strcpy(host_path, base);
-            strcat(host_path, "/");
             strcat(host_path, guest);
         }
     }
@@ -345,6 +344,35 @@ char* relocate_path_at(int host_dirfd, const char* guest_path, char* out, bool f
     return out;
 }
 
+/*
+ * Relocate the target string of a symlink.  Symlink targets are stored
+ * verbatim by the host kernel, so an absolute target must be rewritten to the
+ * relocated host path, otherwise following the link would escape the guest
+ * rootfs.  Relative targets are resolved against the link's own directory
+ * (already inside the rootfs) and must be left alone, and /mnt/host-root/...
+ * targets already denote host paths and are left alone too.
+ */
+char* relocate_symlink_target(const char* target, char* out)
+{
+    strncpy(out, target, PATH_MAX - 1);
+    out[PATH_MAX - 1] = '\0';
+
+    if (!base || target[0] != '/') {
+        //  relative target (or no rootfs configured): leave untouched
+        return out;
+    }
+    if (strcmp(target, "/mnt/host-root") == 0
+        || strstr(target, "/mnt/host-root/") == target) {
+        //  already a host path
+        return out;
+    }
+    if (strstr(target, base) == target) {
+        //  already inside the rootfs
+        return out;
+    }
+    return relocate_path_at(AT_FDCWD, target, out, false);
+}
+
 char* restore_path(const char* host_path, char* out)
 {
     if (host_path[0] != '/') {
@@ -373,6 +401,44 @@ char* restore_path(const char* host_path, char* out)
 
 reuse:
     strcpy(out, host_path);
+    return out;
+}
+
+/*
+ * Convert the raw contents of a symlink back to the path a guest expects to
+ * read from readlink(2).  A target under the rootfs base is a host path this
+ * layer created and is restored to its guest-relative form; anything else is
+ * already a guest-visible path (an absolute guest path, e.g. one baked into an
+ * extracted rootfs, or an explicit /mnt/host-root/... host path) and is
+ * returned unchanged.
+ */
+char* restore_symlink_target(const char* host_path, char* out)
+{
+    if (!base || host_path[0] != '/') {
+        goto reuse;
+    }
+
+    char buf_base[PATH_MAX];
+    strcpy(buf_base, base);
+    int len = strlen(buf_base);
+    if (len == 0 || buf_base[len - 1] != '/') {
+        strcat(buf_base, "/");
+    }
+
+    if (strcmp(host_path, base) == 0) {
+        //  root of rootfs
+        strcpy(out, "/");
+        return out;
+    }
+    if (strstr(host_path, buf_base) == host_path) {
+        strcpy(out, host_path + strlen(buf_base) - 1);
+        return out;
+    }
+
+reuse:
+    //  not a relocated host path: already a guest-visible path
+    strncpy(out, host_path, PATH_MAX - 1);
+    out[PATH_MAX - 1] = '\0';
     return out;
 }
 

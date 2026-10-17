@@ -8636,7 +8636,7 @@ ssize_t do_guest_readlink(const char *pathname, char *buf, size_t bufsiz)
             memcpy(tmp, buf, ret);
             tmp[ret] = '\0';
 
-            restore_path(tmp, reloc);
+            restore_symlink_target(tmp, reloc);
 
             snprintf(buf, bufsiz, "%s", reloc);
             ret = MIN(strlen(reloc), bufsiz);
@@ -10766,12 +10766,15 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
     case TARGET_NR_symlink:
         {
             void *p2;
+            char reloc_target[PATH_MAX];
             p = lock_user_string(arg1);
             p2 = lock_user_string(arg2);
             if (!p || !p2)
                 ret = -TARGET_EFAULT;
             else
-                ret = get_errno(symlink(p, relocate_path_at(AT_FDCWD, p2, reloc, false)));
+                ret = get_errno(symlink(
+                    relocate_symlink_target(p, reloc_target),
+                    relocate_path_at(AT_FDCWD, p2, reloc, false)));
             unlock_user(p2, arg2, 0);
             unlock_user(p, arg1, 0);
         }
@@ -10781,12 +10784,15 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
     case TARGET_NR_symlinkat:
         {
             void *p2;
+            char reloc_target[PATH_MAX];
             p  = lock_user_string(arg1);
             p2 = lock_user_string(arg3);
             if (!p || !p2)
                 ret = -TARGET_EFAULT;
             else
-                ret = get_errno(symlinkat(p, arg2, relocate_path_at(arg2, p2, reloc, false)));
+                ret = get_errno(symlinkat(
+                    relocate_symlink_target(p, reloc_target), arg2,
+                    relocate_path_at(arg2, p2, reloc, false)));
             unlock_user(p2, arg3, 0);
             unlock_user(p, arg1, 0);
         }
@@ -10832,7 +10838,7 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
                     memcpy(tmp, p2, ret);
                     tmp[ret] = '\0';
 
-                    restore_path(tmp, reloc);
+                    restore_symlink_target(tmp, reloc);
 
                     snprintf(p2, arg4, "%s", reloc);
                     ret = MIN(strlen(reloc), arg4);
