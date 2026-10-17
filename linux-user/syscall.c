@@ -8594,7 +8594,7 @@ static int do_openat2(CPUArchState *cpu_env, abi_long dirfd,
         char reloc[PATH_MAX];
         //  TODO: support how.resolve
         relocate_path_at(dirfd, pathname, reloc, true);
-        ret = get_errno(safe_openat2(dirfd, pathname, &how,
+        ret = get_errno(safe_openat2(dirfd, reloc, &how,
                                      sizeof(struct open_how_ver0)));
     }
 
