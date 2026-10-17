@@ -353,7 +353,11 @@ char* restore_path(const char* host_path, char* out)
         strcat(buf_base, "/");
     }
 
-    if (strstr(host_path, buf_base) == host_path) {
+    if (strcmp(host_path, base) == 0) {
+        //  root of rootfs
+        strcpy(out, "/");
+    }
+    else if (strstr(host_path, buf_base) == host_path) {
         strcpy(out, host_path + strlen(buf_base) - 1);
     }
     else {

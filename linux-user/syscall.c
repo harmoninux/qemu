@@ -2103,6 +2103,11 @@ static int do_getcwd(char *buf, size_t size) {
     }
     char res[PATH_MAX];
     restore_path(buf, res);
+    if (strlen(res) + 1 > size) {
+        errno = ERANGE;
+        return (-1);
+    }
+    memcpy(buf, res, strlen(res) + 1);
     return strlen(res) + 1;
 }
 
