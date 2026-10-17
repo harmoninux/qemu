@@ -9632,7 +9632,7 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
     case TARGET_NR_creat:
         if (!(p = lock_user_string(arg1)))
             return -TARGET_EFAULT;
-        ret = get_errno(creat(p, arg2));
+        ret = get_errno(creat(relocate_path_at(AT_FDCWD, p, reloc, true), arg2));
         fd_trans_unregister(ret);
         unlock_user(p, arg1, 0);
         return ret;
