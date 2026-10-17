@@ -9806,7 +9806,7 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
     case TARGET_NR_chmod:
         if (!(p = lock_user_string(arg1)))
             return -TARGET_EFAULT;
-        ret = get_errno(chmod(p, arg2));
+        ret = get_errno(chmod(relocate_path_at(AT_FDCWD, p, reloc, true), arg2));
         unlock_user(p, arg1, 0);
         return ret;
 #endif
@@ -9993,7 +9993,7 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
             }
             if (!(p = lock_user_string(arg1)))
                 return -TARGET_EFAULT;
-            ret = get_errno(utime(p, host_tbuf));
+            ret = get_errno(utime(relocate_path_at(AT_FDCWD, p, reloc, true), host_tbuf));
             unlock_user(p, arg1, 0);
         }
         return ret;
@@ -10013,7 +10013,7 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
             }
             if (!(p = lock_user_string(arg1)))
                 return -TARGET_EFAULT;
-            ret = get_errno(utimes(p, tvp));
+            ret = get_errno(utimes(relocate_path_at(AT_FDCWD, p, reloc, true), tvp));
             unlock_user(p, arg1, 0);
         }
         return ret;
@@ -10062,7 +10062,9 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
         if (!(p = lock_user_string(arg2))) {
             return -TARGET_EFAULT;
         }
-        ret = get_errno(faccessat(arg1, p, arg3, arg4));
+        ret = get_errno(faccessat(arg1, relocate_path_at(arg1, p, reloc,
+                                                         !(arg4 & AT_SYMLINK_NOFOLLOW)),
+                                  arg3, arg4));
         unlock_user(p, arg2, 0);
         return ret;
 #endif
@@ -10173,7 +10175,7 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
     case TARGET_NR_mkdir:
         if (!(p = lock_user_string(arg1)))
             return -TARGET_EFAULT;
-        ret = get_errno(mkdir(p, arg2));
+        ret = get_errno(mkdir(relocate_path_at(AT_FDCWD, p, reloc, false), arg2));
         unlock_user(p, arg1, 0);
         return ret;
 #endif
@@ -11074,7 +11076,9 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
         if (!(p = lock_user_string(arg2))) {
             return -TARGET_EFAULT;
         }
-        ret = get_errno(safe_fchmodat2(arg1, p, arg3, arg4));
+        ret = get_errno(safe_fchmodat2(arg1, relocate_path_at(arg1, p, reloc,
+                                                             !(arg4 & AT_SYMLINK_NOFOLLOW)),
+                                       arg3, arg4));
         unlock_user(p, arg2, 0);
         return ret;
 #endif
@@ -12325,7 +12329,8 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
     case TARGET_NR_lchown:
         if (!(p = lock_user_string(arg1)))
             return -TARGET_EFAULT;
-        ret = get_errno(lchown(p, low2highuid(arg2), low2highgid(arg3)));
+        ret = get_errno(lchown(relocate_path_at(AT_FDCWD, p, reloc, false),
+                              low2highuid(arg2), low2highgid(arg3)));
         unlock_user(p, arg1, 0);
         return ret;
 #endif
@@ -12525,7 +12530,8 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
     case TARGET_NR_chown:
         if (!(p = lock_user_string(arg1)))
             return -TARGET_EFAULT;
-        ret = get_errno(chown(p, low2highuid(arg2), low2highgid(arg3)));
+        ret = get_errno(chown(relocate_path_at(AT_FDCWD, p, reloc, true),
+                              low2highuid(arg2), low2highgid(arg3)));
         unlock_user(p, arg1, 0);
         return ret;
 #endif
@@ -12871,7 +12877,8 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
     case TARGET_NR_chown32:
         if (!(p = lock_user_string(arg1)))
             return -TARGET_EFAULT;
-        ret = get_errno(chown(p, arg2, arg3));
+        ret = get_errno(chown(relocate_path_at(AT_FDCWD, p, reloc, true),
+                              arg2, arg3));
         unlock_user(p, arg1, 0);
         return ret;
 #endif
