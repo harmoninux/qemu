@@ -47,6 +47,11 @@ static int prepare_binprm(struct linux_binprm *bprm)
     if (!S_ISREG(mode)) {   /* Must be regular file */
         return -EACCES;
     }
+#ifndef __OHOS__
+    if (!(mode & 0111)) {   /* Must have at least one execute bit set */
+        return -EACCES;
+    }
+#endif
 
     bprm->e_uid = geteuid();
     bprm->e_gid = getegid();

@@ -6793,6 +6793,7 @@ static int do_fork(CPUArchState *env, unsigned int flags, abi_ulong newsp,
     return ret;
 }
 
+#ifdef __OHOS__
 static int do_mount(const char *source, const char *target,
                  const char *filesystemtype, unsigned long mountflags,
                  const void * data)
@@ -6817,6 +6818,7 @@ static int do_umount2(const char *target, int flags)
 
     return umount2(target, flags);
 }
+#endif
 
 /* warning : doesn't handle linux specific flags... */
 static int target_to_host_fcntl_cmd(int cmd)
@@ -9861,11 +9863,19 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
              * do that since it's not guaranteed to be a NULL-terminated
              * string.
              */
+#ifdef __OHOS__
             if (!arg5) {
                 ret = do_mount(p, p2, p3, (unsigned long)arg4, NULL);
             } else {
                 ret = do_mount(p, p2, p3, (unsigned long)arg4, g2h(cpu, arg5));
             }
+#else
+            if (!arg5) {
+                ret = mount(p, p2, p3, (unsigned long)arg4, NULL);
+            } else {
+                ret = mount(p, p2, p3, (unsigned long)arg4, g2h(cpu, arg5));
+            }
+#endif
             ret = get_errno(ret);
 
             if (arg1) {
@@ -10237,7 +10247,11 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
     case TARGET_NR_umount2:
         if (!(p = lock_user_string(arg1)))
             return -TARGET_EFAULT;
+#ifdef __OHOS__
         ret = get_errno(do_umount2(p, arg2));
+#else
+        ret = get_errno(umount2(p, arg2));
+#endif
         unlock_user(p, arg1, 0);
         return ret;
 #endif
@@ -11385,6 +11399,10 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
         }
         return ret;
 #endif
+#ifndef __OHOS__
+    case TARGET_NR_vhangup:
+        return get_errno(vhangup());
+#endif
 #ifdef TARGET_NR_syscall
     case TARGET_NR_syscall:
         return do_syscall(cpu_env, arg1 & 0xffff, arg2, arg3, arg4, arg5,
@@ -12313,30 +12331,48 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
 #endif
 #ifdef TARGET_NR_getuid
     case TARGET_NR_getuid:
-        // return get_errno(high2lowuid(getuid()));
+#ifdef __OHOS__
         return 0;
+#else
+        return get_errno(high2lowuid(getuid()));
+#endif
 #endif
 #ifdef TARGET_NR_getgid
     case TARGET_NR_getgid:
-        // return get_errno(high2lowgid(getgid()));
+#ifdef __OHOS__
         return 0;
+#else
+        return get_errno(high2lowgid(getgid()));
+#endif
 #endif
 #ifdef TARGET_NR_geteuid
     case TARGET_NR_geteuid:
-        // return get_errno(high2lowuid(geteuid()));
+#ifdef __OHOS__
         return 0;
+#else
+        return get_errno(high2lowuid(geteuid()));
+#endif
 #endif
 #ifdef TARGET_NR_getegid
     case TARGET_NR_getegid:
-        // return get_errno(high2lowgid(getegid()));
+#ifdef __OHOS__
         return 0;
+#else
+        return get_errno(high2lowgid(getegid()));
+#endif
 #endif
     case TARGET_NR_setreuid:
-        // return get_errno(sys_setreuid(low2highuid(arg1), low2highuid(arg2)));
+#ifdef __OHOS__
         return 0;
+#else
+        return get_errno(sys_setreuid(low2highuid(arg1), low2highuid(arg2)));
+#endif
     case TARGET_NR_setregid:
-        // return get_errno(sys_setregid(low2highgid(arg1), low2highgid(arg2)));
+#ifdef __OHOS__
         return 0;
+#else
+        return get_errno(sys_setregid(low2highgid(arg1), low2highgid(arg2)));
+#endif
     case TARGET_NR_getgroups:
         { /* the same code as for TARGET_NR_getgroups32 */
             int gidsetsize = arg1;
@@ -12354,12 +12390,16 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
                 }
             }
             // ret = get_errno(getgroups(gidsetsize, grouplist));
+#ifdef __OHOS__
             if (gidsetsize > 0) {
                 grouplist[0] = 0;
                 ret = 1;
             } else {
                 ret = 0;
             }
+#else
+            ret = get_errno(getgroups(gidsetsize, grouplist));
+#endif
             if (!is_error(ret) && gidsetsize > 0) {
                 target_grouplist = lock_user(VERIFY_WRITE, arg2,
                                              gidsetsize * sizeof(target_id), 0);
@@ -12376,59 +12416,74 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
         }
     case TARGET_NR_setgroups:
         { /* the same code as for TARGET_NR_setgroups32 */
-            // int gidsetsize = arg1;
-            // target_id *target_grouplist;
-            // g_autofree gid_t *grouplist = NULL;
-            // int i;
-            //
-            // if (gidsetsize > NGROUPS_MAX || gidsetsize < 0) {
-            //     return -TARGET_EINVAL;
-            // }
-            // if (gidsetsize > 0) {
-            //     grouplist = g_try_new(gid_t, gidsetsize);
-            //     if (!grouplist) {
-            //         return -TARGET_ENOMEM;
-            //     }
-            //     target_grouplist = lock_user(VERIFY_READ, arg2,
-            //                                  gidsetsize * sizeof(target_id), 1);
-            //     if (!target_grouplist) {
-            //         return -TARGET_EFAULT;
-            //     }
-            //     for (i = 0; i < gidsetsize; i++) {
-            //         grouplist[i] = low2highgid(tswapid(target_grouplist[i]));
-            //     }
-            //     unlock_user(target_grouplist, arg2,
-            //                 gidsetsize * sizeof(target_id));
-            // }
-            // return get_errno(sys_setgroups(gidsetsize, grouplist));
+#ifdef __OHOS__
             return 0;
+#else
+            int gidsetsize = arg1;
+            target_id *target_grouplist;
+            g_autofree gid_t *grouplist = NULL;
+            int i;
+
+            if (gidsetsize > NGROUPS_MAX || gidsetsize < 0) {
+                return -TARGET_EINVAL;
+            }
+            if (gidsetsize > 0) {
+                grouplist = g_try_new(gid_t, gidsetsize);
+                if (!grouplist) {
+                    return -TARGET_ENOMEM;
+                }
+                target_grouplist = lock_user(VERIFY_READ, arg2,
+                                             gidsetsize * sizeof(target_id), 1);
+                if (!target_grouplist) {
+                    return -TARGET_EFAULT;
+                }
+                for (i = 0; i < gidsetsize; i++) {
+                    grouplist[i] = low2highgid(tswapid(target_grouplist[i]));
+                }
+                unlock_user(target_grouplist, arg2,
+                            gidsetsize * sizeof(target_id));
+            }
+            return get_errno(sys_setgroups(gidsetsize, grouplist));
+#endif
         }
     case TARGET_NR_fchown:
-        // return get_errno(fchown(arg1, low2highuid(arg2), low2highgid(arg3)));
+#ifdef __OHOS__
         return 0;
+#else
+        return get_errno(fchown(arg1, low2highuid(arg2), low2highgid(arg3)));
+#endif
 #if defined(TARGET_NR_fchownat)
     case TARGET_NR_fchownat:
-        // if (!(p = lock_user_string(arg2)))
-        //     return -TARGET_EFAULT;
-        // ret = get_errno(fchownat(arg1, relocate_path_at(arg1, p, reloc, true), low2highuid(arg3),
-        //                              low2highgid(arg4), arg5));
-        // unlock_user(p, arg2, 0);
-        // return ret;
+#ifdef __OHOS__
         return 0;
+#else
+        if (!(p = lock_user_string(arg2)))
+            return -TARGET_EFAULT;
+        ret = get_errno(fchownat(arg1, p, low2highuid(arg3),
+                                 low2highgid(arg4), arg5));
+        unlock_user(p, arg2, 0);
+        return ret;
+#endif
 #endif
 #ifdef TARGET_NR_setresuid
     case TARGET_NR_setresuid:
-        // return get_errno(sys_setresuid(low2highuid(arg1),
-        //                                low2highuid(arg2),
-        //                                low2highuid(arg3)));
+#ifdef __OHOS__
         return 0;
+#else
+        return get_errno(sys_setresuid(low2highuid(arg1),
+                                       low2highuid(arg2),
+                                       low2highuid(arg3)));
+#endif
 #endif
 #ifdef TARGET_NR_getresuid
     case TARGET_NR_getresuid:
         {
             uid_t ruid = 0, euid = 0, suid = 0;
-            // ret = get_errno(getresuid(&ruid, &euid, &suid));
+#ifdef __OHOS__
             ret = 0;
+#else
+            ret = get_errno(getresuid(&ruid, &euid, &suid));
+#endif
             if (!is_error(ret)) {
                 if (put_user_id(high2lowuid(ruid), arg1)
                     || put_user_id(high2lowuid(euid), arg2)
@@ -12440,17 +12495,23 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
 #endif
 #ifdef TARGET_NR_getresgid
     case TARGET_NR_setresgid:
-        // return get_errno(sys_setresgid(low2highgid(arg1),
-        //                                low2highgid(arg2),
-        //                                low2highgid(arg3)));
+#ifdef __OHOS__
         return 0;
+#else
+        return get_errno(sys_setresgid(low2highgid(arg1),
+                                       low2highgid(arg2),
+                                       low2highgid(arg3)));
+#endif
 #endif
 #ifdef TARGET_NR_getresgid
     case TARGET_NR_getresgid:
         {
             gid_t rgid = 0, egid = 0, sgid = 0;
-            // ret = get_errno(getresgid(&rgid, &egid, &sgid));
+#ifdef __OHOS__
             ret = 0;
+#else
+            ret = get_errno(getresgid(&rgid, &egid, &sgid));
+#endif
             if (!is_error(ret)) {
                 if (put_user_id(high2lowgid(rgid), arg1)
                     || put_user_id(high2lowgid(egid), arg2)
@@ -12469,21 +12530,33 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
         return ret;
 #endif
     case TARGET_NR_setuid:
+#ifdef __OHOS__
         // we cannot use setuid on OHOS
-        // return get_errno(sys_setuid(low2highuid(arg1)));
         return 0;
+#else
+        return get_errno(sys_setuid(low2highuid(arg1)));
+#endif
     case TARGET_NR_setgid:
+#ifdef __OHOS__
         // we cannot use setgid on OHOS
-        // return get_errno(sys_setgid(low2highgid(arg1)));
         return 0;
+#else
+        return get_errno(sys_setgid(low2highgid(arg1)));
+#endif
     case TARGET_NR_setfsuid:
+#ifdef __OHOS__
         // we cannot use on OHOS
-        // return get_errno(setfsuid(arg1));
         return 0;
+#else
+        return get_errno(setfsuid(arg1));
+#endif
     case TARGET_NR_setfsgid:
+#ifdef __OHOS__
         // we cannot use on OHOS
-        // return get_errno(setfsgid(arg1));
         return 0;
+#else
+        return get_errno(setfsgid(arg1));
+#endif
 
 #ifdef TARGET_NR_lchown32
     case TARGET_NR_lchown32:
