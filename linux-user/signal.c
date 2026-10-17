@@ -195,6 +195,23 @@ int block_signals(void)
     return qatomic_xchg(&ts->signal_pending, 1);
 }
 
+/* glibc provides sigorset(), but the OHOS (musl) C library does not.
+ * dest = left | right, safe even if dest aliases left or right.
+ */
+static void host_sigorset(sigset_t *dest, const sigset_t *left,
+                          const sigset_t *right)
+{
+    int i;
+
+    for (i = 1; i <= NSIG; ++i) {
+        if (sigismember(left, i) || sigismember(right, i)) {
+            sigaddset(dest, i);
+        } else {
+            sigdelset(dest, i);
+        }
+    }
+}
+
 /* Wrapper for sigprocmask function
  * Emulates a sigprocmask in a safe way for the guest. Note that set and oldset
  * are host signal set, not guest ones. Returns -QEMU_ERESTARTSYS if
@@ -219,7 +236,7 @@ int do_sigprocmask(int how, const sigset_t *set, sigset_t *oldset)
 
         switch (how) {
         case SIG_BLOCK:
-            sigorset(&ts->signal_mask, &ts->signal_mask, set);
+            host_sigorset(&ts->signal_mask, &ts->signal_mask, set);
             break;
         case SIG_UNBLOCK:
             for (i = 1; i <= NSIG; ++i) {
@@ -1330,7 +1347,7 @@ static void handle_pending_signal(CPUArchState *cpu_env, int sig,
         /* block signals in the handler */
         blocked_set = ts->in_sigsuspend ?
             &ts->sigsuspend_mask : &ts->signal_mask;
-        sigorset(&ts->signal_mask, blocked_set, &set);
+        host_sigorset(&ts->signal_mask, blocked_set, &set);
         ts->in_sigsuspend = 0;
 
         /* if the CPU is in VM86 mode, we restore the 32 bit values */
