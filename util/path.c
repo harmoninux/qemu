@@ -119,6 +119,7 @@ static bool convert_to_abs_path(int host_dirfd, const char* guest_path, char* ou
         //  not in base
         char host_full_path[PATH_MAX];
         snprintf(host_full_path, sizeof(host_full_path), "%s/%s", host_path, guest_path);
+        strcpy(out, host_full_path);
         return true;
     }
 
@@ -323,7 +324,11 @@ static bool real_exists(const char* path)
 char* relocate_path_at(int host_dirfd, const char* guest_path, char* out, bool follow_symlink)
 {
     char host_full_path[PATH_MAX];
-    convert_to_abs_path(host_dirfd, guest_path, host_full_path);
+    if (!convert_to_abs_path(host_dirfd, guest_path, host_full_path)) {
+        strncpy(out, guest_path, PATH_MAX - 1);
+        out[PATH_MAX - 1] = '\0';
+        return out;
+    }
 
     if (follow_symlink
         && !skip_relocation(guest_path)
