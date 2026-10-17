@@ -6806,7 +6806,12 @@ static int do_mount(const char *source, const char *target,
 
 static int do_umount2(const char *target, int flags)
 {
-    if (strstr(target, "/proc") != NULL) {
+    /*
+     * Refuse to unmount the host's proc filesystem.  Match the real prefix
+     * only: a guest path such as /data/proc or /mnt/myproc must not be
+     * affected.
+     */
+    if (strcmp(target, "/proc") == 0 || strstart(target, "/proc/", NULL)) {
         return -EPERM;
     }
 
@@ -9757,11 +9762,16 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
     case TARGET_NR_execve:
         return do_execv(cpu_env, AT_FDCWD, arg1, arg2, arg3, 0, false);
     case TARGET_NR_chdir:
-        if (!(p = lock_user_string(arg1)))
-            return -TARGET_EFAULT;
-        ret = get_errno(chdir(relocate_path_at(AT_FDCWD, p, reloc, true)));
-        unlock_user(p, arg1, 0);
-        return ret;
+        {
+            char *host_path;
+
+            if (!(p = lock_user_string(arg1)))
+                return -TARGET_EFAULT;
+            host_path = relocate_path_at(AT_FDCWD, p, reloc, true);
+            ret = host_path ? get_errno(chdir(host_path)) : -TARGET_ENAMETOOLONG;
+            unlock_user(p, arg1, 0);
+            return ret;
+        }
 #ifdef TARGET_NR_time
     case TARGET_NR_time:
         {
@@ -10159,11 +10169,17 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
 #endif
 #if defined(TARGET_NR_mkdirat)
     case TARGET_NR_mkdirat:
-        if (!(p = lock_user_string(arg2)))
-            return -TARGET_EFAULT;
-        ret = get_errno(mkdirat(arg1, relocate_path_at(arg1, p, reloc, false), arg3));
-        unlock_user(p, arg2, 0);
-        return ret;
+        {
+            char *host_path;
+
+            if (!(p = lock_user_string(arg2)))
+                return -TARGET_EFAULT;
+            host_path = relocate_path_at(arg1, p, reloc, false);
+            ret = host_path ? get_errno(mkdirat(arg1, host_path, arg3))
+                            : -TARGET_ENAMETOOLONG;
+            unlock_user(p, arg2, 0);
+            return ret;
+        }
 #endif
 #ifdef TARGET_NR_rmdir
     case TARGET_NR_rmdir:
