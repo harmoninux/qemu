@@ -12207,7 +12207,9 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
     case TARGET_NR_truncate64:
         if (!(p = lock_user_string(arg1)))
             return -TARGET_EFAULT;
-	ret = target_truncate64(cpu_env, p, arg2, arg3, arg4);
+        ret = target_truncate64(cpu_env,
+                                relocate_path_at(AT_FDCWD, p, reloc, true),
+                                arg2, arg3, arg4);
         unlock_user(p, arg1, 0);
         return ret;
 #endif
