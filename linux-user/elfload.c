@@ -2791,7 +2791,11 @@ static int pgb_try_mmap(uintptr_t addr, uintptr_t addr_last, bool keep)
     size_t size = addr_last - addr + 1;
     void *p = mmap((void *)addr, size, PROT_NONE,
                    MAP_ANONYMOUS | MAP_PRIVATE |
+#ifdef __OHOS__
                    MAP_NORESERVE, -1, 0);
+#else
+                   MAP_NORESERVE | MAP_FIXED_NOREPLACE, -1, 0);
+#endif
     int ret;
 
     if (p == MAP_FAILED) {

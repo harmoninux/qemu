@@ -583,13 +583,17 @@ static int alloc_code_gen_buffer_splitwx_memfd(size_t size, Error **errp)
         goto fail;
     }
 
+#ifdef __OHOS__
     //  required by OHOS
     prctl(PRCTL_SET_JITFORT, 0, 0);
+#endif
 
     buf_rx = mmap(NULL, size, host_prot_read_exec(), MAP_SHARED, fd, 0);
 
+#ifdef __OHOS__
     //  required by OHOS
     prctl(PRCTL_SET_JITFORT, 0, 1);
+#endif
 
     if (buf_rx == MAP_FAILED) {
         error_setg_errno(errp, errno,

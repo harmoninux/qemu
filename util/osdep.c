@@ -84,6 +84,7 @@ static int qemu_mprotect__osdep(void *addr, size_t size, int prot)
     }
     return 0;
 #else
+#ifdef __OHOS__
     if (prot & PROT_EXEC) {
         //  required by OHOS
         prctl(PRCTL_SET_JITFORT, 0, 0);
@@ -94,6 +95,9 @@ static int qemu_mprotect__osdep(void *addr, size_t size, int prot)
         prctl(PRCTL_SET_JITFORT, 0, 1);
     }
     if (ret) {
+#else
+    if (mprotect(addr, size, prot)) {
+#endif
         error_report("%s: mprotect failed: %s", __func__, strerror(errno));
         return -1;
     }

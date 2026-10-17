@@ -166,8 +166,10 @@ QEMU_EXTERN_C int daemon(int, int);
 
 #if defined(CONFIG_POSIX) && !defined(EMSCRIPTEN)
 #include "system/os-posix.h"
+#ifdef __OHOS__
 #include <sys/prctl.h>
 #define PRCTL_SET_JITFORT   0x6a6974
+#endif
 #endif
 
 #if defined(EMSCRIPTEN)

@@ -1042,18 +1042,36 @@ have_xen_pci_passthrough = get_option('xen_pci_passthrough') \
 # You should also check if any of the glib.version() checks
 # below can also be removed.
 glib_req_ver = '>=2.66.0'
-# always link glib and gmodule statically on OHOS
-glib_pc = dependency('glib-2.0', version: glib_req_ver, required: true,
-                    method: 'pkg-config', static: true)
-glib_cflags = []
-if enable_modules
-  gmodule = dependency('gmodule-export-2.0', version: glib_req_ver, required: true,
-                       method: 'pkg-config', static: true)
-elif get_option('plugins')
-  gmodule = dependency('gmodule-no-export-2.0', version: glib_req_ver, required: true,
-                       method: 'pkg-config', static: true)
+# OHOS needs glib and gmodule linked statically.  Note that host_machine.system()
+# is 'linux' for the OHOS target as well (OHOS compilers define __linux__), so
+# detect it from the compiler-defined __OHOS__ macro instead.  Host builds keep
+# the upstream dynamic dependency.
+if cc.get_define('__OHOS__') != ''
+  glib_pc = dependency('glib-2.0', version: glib_req_ver, required: true,
+                      method: 'pkg-config', static: true)
+  glib_cflags = []
+  if enable_modules
+    gmodule = dependency('gmodule-export-2.0', version: glib_req_ver, required: true,
+                         method: 'pkg-config', static: true)
+  elif get_option('plugins')
+    gmodule = dependency('gmodule-no-export-2.0', version: glib_req_ver, required: true,
+                         method: 'pkg-config', static: true)
+  else
+    gmodule = not_found
+  endif
 else
-  gmodule = not_found
+  glib_pc = dependency('glib-2.0', version: glib_req_ver, required: true,
+                      method: 'pkg-config')
+  glib_cflags = []
+  if enable_modules
+    gmodule = dependency('gmodule-export-2.0', version: glib_req_ver, required: true,
+                         method: 'pkg-config')
+  elif get_option('plugins')
+    gmodule = dependency('gmodule-no-export-2.0', version: glib_req_ver, required: true,
+                         method: 'pkg-config')
+  else
+    gmodule = not_found
+  endif
 endif
 
 # This workaround is required due to a bug in pkg-config file for glib as it
