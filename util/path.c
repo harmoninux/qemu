@@ -16,9 +16,44 @@ static const char* base;
 static GHashTable* hash;
 static QemuMutex lock;
 
+/*
+ * Bounded replacements for strcpy()/strcat().  They never write past the end
+ * of the destination and always keep it NUL terminated.  A string that does
+ * not fit is reported by returning false with errno set to ENAMETOOLONG, so
+ * callers can fail gracefully instead of overflowing a PATH_MAX buffer.
+ */
+static bool bounded_copy(char *dst, size_t dst_size, const char *src)
+{
+    size_t len = strlen(src);
+
+    if (len >= dst_size) {
+        errno = ENAMETOOLONG;
+        return false;
+    }
+    memcpy(dst, src, len + 1);
+    return true;
+}
+
+static bool bounded_append(char *dst, size_t dst_size, const char *src)
+{
+    size_t len = strlen(dst);
+
+    return bounded_copy(dst + len, dst_size - len, src);
+}
+
 void init_paths(const char* prefix)
 {
+    /*
+     * Always initialize the shared state, even when no rootfs prefix is
+     * configured, so that a no-"-L" invocation behaves like upstream (identity
+     * path mapping) instead of dereferencing a NULL base or locking an
+     * uninitialized mutex.
+     */
+    hash = g_hash_table_new(g_str_hash, g_str_equal);
+    qemu_mutex_init(&lock);
+
     if (prefix[0] == '\0' || !strcmp(prefix, "/")) {
+        base = NULL;
         return;
     }
 
@@ -32,12 +67,11 @@ void init_paths(const char* prefix)
         g_free(cwd);
     }
     char real[PATH_MAX];
-    realpath(tmp_base, real);
+    if (!realpath(tmp_base, real)) {
+        pstrcpy(real, sizeof(real), tmp_base);
+    }
     g_free(tmp_base);
     base = g_strdup(real);
-
-    hash = g_hash_table_new(g_str_hash, g_str_equal);
-    qemu_mutex_init(&lock);
 }
 
 static bool skip_relocation(const char* name)
@@ -54,8 +88,12 @@ static bool skip_relocation(const char* name)
 
 const char* do_relocate_path(const char* guest, char* out)
 {
-    if (!base || !guest) {
-        //  invalid
+    if (!guest) {
+        out[0] = '\0';
+        return out;
+    }
+    if (!base) {
+        //  no rootfs configured: identity mapping
         goto use_original;
     }
     if (skip_relocation(guest)) {
@@ -70,39 +108,56 @@ const char* do_relocate_path(const char* guest, char* out)
     char host_path[PATH_MAX];
     if (guest[0] != '/') {
         //  relative to absolute
-        getcwd(host_path, sizeof(host_path));
-        strcat(host_path, "/");
-        strcat(host_path, guest);
+        if (!getcwd(host_path, sizeof(host_path))) {
+            goto use_original;
+        }
+        if (!bounded_append(host_path, sizeof(host_path), "/") ||
+            !bounded_append(host_path, sizeof(host_path), guest)) {
+            goto toolong;
+        }
+    }
+    else if (strcmp(guest, "/mnt/host-root") == 0) {
+        //  root of host
+        if (!bounded_copy(host_path, sizeof(host_path), "/")) {
+            goto toolong;
+        }
+    }
+    else if (strstr(guest, "/mnt/host-root/") == guest) {
+        //  remove prefix
+        if (!bounded_copy(host_path, sizeof(host_path),
+                          guest + strlen("/mnt/host-root"))) {
+            goto toolong;
+        }
     }
     else {
-        if (strcmp(guest, "/mnt/host-root") == 0) {
-            //  root of host
-            strcpy(host_path, "/");
-        }
-        else if (strstr(guest, "/mnt/host-root/") == guest) {
-            //  remove prefix
-            strcpy(host_path, guest + strlen("/mnt/host-root"));
-        }
-        else {
-            //  absolute (guest already starts with '/')
-            strcpy(host_path, base);
-            strcat(host_path, guest);
+        //  absolute (guest already starts with '/')
+        if (!bounded_copy(host_path, sizeof(host_path), base) ||
+            !bounded_append(host_path, sizeof(host_path), guest)) {
+            goto toolong;
         }
     }
 
-    strcpy(out, host_path);
+    if (!bounded_copy(out, PATH_MAX, host_path)) {
+        goto toolong;
+    }
     return out;
 
 use_original:
-    strcpy(out, guest);
+    if (!bounded_copy(out, PATH_MAX, guest)) {
+        goto toolong;
+    }
     return out;
+
+toolong:
+    errno = ENAMETOOLONG;
+    out[0] = '\0';
+    return NULL;
 }
 
 static bool convert_to_abs_path(int host_dirfd, const char* guest_path, char* out)
 {
     if (host_dirfd == AT_FDCWD || guest_path[0] == '/') {
-        do_relocate_path(guest_path, out);
-        return true;
+        return do_relocate_path(guest_path, out) != NULL;
     }
 
     char self_fd[PATH_MAX];
@@ -114,18 +169,19 @@ static bool convert_to_abs_path(int host_dirfd, const char* guest_path, char* ou
     }
     host_path[len] = '\0';
 
-    if (strstr(host_path, base) != &host_path[0]) {
-        //  not in base
-        char host_full_path[PATH_MAX];
-        snprintf(host_full_path, sizeof(host_full_path), "%s/%s", host_path, guest_path);
-        strcpy(out, host_full_path);
-        return true;
+    char host_full_path[PATH_MAX];
+    if (!bounded_copy(host_full_path, sizeof(host_full_path), host_path) ||
+        !bounded_append(host_full_path, sizeof(host_full_path), "/") ||
+        !bounded_append(host_full_path, sizeof(host_full_path), guest_path)) {
+        return false;
     }
 
-    char host_full_path[PATH_MAX];
-    snprintf(host_full_path, sizeof(host_full_path), "%s/%s", host_path, guest_path);
-    do_relocate_path(host_full_path, out);
-    return true;
+    if (!base || strstr(host_path, base) != &host_path[0]) {
+        //  not in base
+        return bounded_copy(out, PATH_MAX, host_full_path);
+    }
+
+    return do_relocate_path(host_full_path, out) != NULL;
 }
 
 static size_t slash_len(const char* s)
@@ -147,20 +203,34 @@ static char* str_chrnul(const char* s, int c)
 ssize_t readlink_with_relocation(char* path, char* buf, size_t len)
 {
     char tmp[PATH_MAX];
-    ssize_t ret = readlink(path, tmp, PATH_MAX - 1);
+    ssize_t ret = readlink(path, tmp, sizeof(tmp) - 1);
     if (ret < 0) {
         return ret;
     }
     tmp[ret] = '\0';
-    if (tmp[0] != '/') {
-        strncpy(buf, tmp, len);
+
+    const char* result = tmp;
+    char abs[PATH_MAX];
+    if (tmp[0] == '/') {
+        if (!do_relocate_path(tmp, abs)) {
+            return -1;
+        }
+        result = abs;
     }
-    else {
-        char abs[PATH_MAX];
-        do_relocate_path(tmp, abs);
-        strncpy(buf, abs, len);
+
+    size_t rlen = strlen(result);
+    if (rlen >= len) {
+        /*
+         * The (possibly relocated) target does not fit: copy what fits and
+         * report the full capacity so the caller treats it the same way it
+         * treats a readlink() result that filled the buffer, i.e. "too long".
+         */
+        memcpy(buf, result, len);
+        return len;
     }
-    return strlen(buf);
+    memcpy(buf, result, rlen);
+    buf[rlen] = '\0';
+    return rlen;
 }
 
 /**
@@ -324,8 +394,14 @@ char* relocate_path_at(int host_dirfd, const char* guest_path, char* out, bool f
 {
     char host_full_path[PATH_MAX];
     if (!convert_to_abs_path(host_dirfd, guest_path, host_full_path)) {
-        strncpy(out, guest_path, PATH_MAX - 1);
-        out[PATH_MAX - 1] = '\0';
+        if (errno == ENAMETOOLONG) {
+            out[0] = '\0';
+            return NULL;
+        }
+        if (!bounded_copy(out, PATH_MAX, guest_path)) {
+            out[0] = '\0';
+            return NULL;
+        }
         return out;
     }
 
@@ -334,11 +410,21 @@ char* relocate_path_at(int host_dirfd, const char* guest_path, char* out, bool f
         && !real_exists(host_full_path)) {
         char* res = readpath_with_relocation(host_full_path, out);
         if (!res) {
-            strcpy(out, host_full_path);
+            if (errno == ENAMETOOLONG) {
+                out[0] = '\0';
+                return NULL;
+            }
+            if (!bounded_copy(out, PATH_MAX, host_full_path)) {
+                out[0] = '\0';
+                return NULL;
+            }
         }
     }
     else {
-        strcpy(out, host_full_path);
+        if (!bounded_copy(out, PATH_MAX, host_full_path)) {
+            out[0] = '\0';
+            return NULL;
+        }
     }
 
     return out;
@@ -354,8 +440,10 @@ char* relocate_path_at(int host_dirfd, const char* guest_path, char* out, bool f
  */
 char* relocate_symlink_target(const char* target, char* out)
 {
-    strncpy(out, target, PATH_MAX - 1);
-    out[PATH_MAX - 1] = '\0';
+    if (!bounded_copy(out, PATH_MAX, target)) {
+        out[0] = '\0';
+        return out;
+    }
 
     if (!base || target[0] != '/') {
         //  relative target (or no rootfs configured): leave untouched
@@ -370,37 +458,58 @@ char* relocate_symlink_target(const char* target, char* out)
         //  already inside the rootfs
         return out;
     }
-    return relocate_path_at(AT_FDCWD, target, out, false);
+    if (!relocate_path_at(AT_FDCWD, target, out, false)) {
+        out[0] = '\0';
+    }
+    return out;
 }
 
 char* restore_path(const char* host_path, char* out)
 {
-    if (host_path[0] != '/') {
+    if (!base || host_path[0] != '/') {
         goto reuse;
     }
 
     char buf_base[PATH_MAX];
-    strcpy(buf_base, base);
+    if (!bounded_copy(buf_base, sizeof(buf_base), base)) {
+        goto reuse;
+    }
     int len = strlen(buf_base);
     if (len == 0 || buf_base[len - 1] != '/') {
-        strcat(buf_base, "/");
+        if (!bounded_append(buf_base, sizeof(buf_base), "/")) {
+            goto reuse;
+        }
     }
 
     if (strcmp(host_path, base) == 0) {
         //  root of rootfs
-        strcpy(out, "/");
+        if (!bounded_copy(out, PATH_MAX, "/")) {
+            goto toolong;
+        }
     }
     else if (strstr(host_path, buf_base) == host_path) {
-        strcpy(out, host_path + strlen(buf_base) - 1);
+        if (!bounded_copy(out, PATH_MAX, host_path + strlen(buf_base) - 1)) {
+            goto toolong;
+        }
     }
     else {
         //  not in base
-        sprintf(out, "/mnt/host-root/%s", host_path);
+        if (!bounded_copy(out, PATH_MAX, "/mnt/host-root/") ||
+            !bounded_append(out, PATH_MAX, host_path)) {
+            goto toolong;
+        }
     }
     return out;
 
 reuse:
-    strcpy(out, host_path);
+    if (!bounded_copy(out, PATH_MAX, host_path)) {
+        goto toolong;
+    }
+    return out;
+
+toolong:
+    errno = ENAMETOOLONG;
+    out[0] = '\0';
     return out;
 }
 
@@ -419,26 +528,35 @@ char* restore_symlink_target(const char* host_path, char* out)
     }
 
     char buf_base[PATH_MAX];
-    strcpy(buf_base, base);
+    if (!bounded_copy(buf_base, sizeof(buf_base), base)) {
+        goto reuse;
+    }
     int len = strlen(buf_base);
     if (len == 0 || buf_base[len - 1] != '/') {
-        strcat(buf_base, "/");
+        if (!bounded_append(buf_base, sizeof(buf_base), "/")) {
+            goto reuse;
+        }
     }
 
     if (strcmp(host_path, base) == 0) {
         //  root of rootfs
-        strcpy(out, "/");
+        if (!bounded_copy(out, PATH_MAX, "/")) {
+            out[0] = '\0';
+        }
         return out;
     }
     if (strstr(host_path, buf_base) == host_path) {
-        strcpy(out, host_path + strlen(buf_base) - 1);
+        if (!bounded_copy(out, PATH_MAX, host_path + strlen(buf_base) - 1)) {
+            out[0] = '\0';
+        }
         return out;
     }
 
 reuse:
     //  not a relocated host path: already a guest-visible path
-    strncpy(out, host_path, PATH_MAX - 1);
-    out[PATH_MAX - 1] = '\0';
+    if (!bounded_copy(out, PATH_MAX, host_path)) {
+        out[0] = '\0';
+    }
     return out;
 }
 
@@ -446,13 +564,18 @@ char* resolve_with_path_env(const char* path_env, int dirfd, const char* name, c
 {
     if (!path_env || !name || !out) return NULL;
 
-    char* path_copy = strdup(path_env);
-    if (!path_copy) return NULL;
+    char* paths = strdup(path_env);
+    if (!paths) return NULL;
 
     char reloc[PATH_MAX];
     const int r = access(relocate_path_at(dirfd, name, reloc, true), F_OK);
     if (r == 0) {
-        strncpy(out, name, PATH_MAX);
+        if (!bounded_copy(out, PATH_MAX, name)) {
+            out[0] = '\0';
+            free(paths);
+            return NULL;
+        }
+        free(paths);
         return out;
     }
 
@@ -460,15 +583,22 @@ char* resolve_with_path_env(const char* path_env, int dirfd, const char* name, c
 
     qemu_mutex_lock(&lock);
 
-    char* dir = strtok(path_copy, ":");
+    char* dir = strtok(paths, ":");
     char full_path[PATH_MAX];
 
     while (dir) {
-        snprintf(full_path, sizeof(full_path), "%s/%s", dir, name);
+        if (!bounded_copy(full_path, sizeof(full_path), dir) ||
+            !bounded_append(full_path, sizeof(full_path), "/") ||
+            !bounded_append(full_path, sizeof(full_path), name)) {
+            break;
+        }
 
         const int r = access(relocate_path_at(AT_FDCWD, full_path, reloc, true), F_OK);
         if (r == 0) {
-            strncpy(out, full_path, PATH_MAX);
+            if (!bounded_copy(out, PATH_MAX, full_path)) {
+                out[0] = '\0';
+                break;
+            }
             ret = out;
             break;
         }
@@ -478,7 +608,7 @@ char* resolve_with_path_env(const char* path_env, int dirfd, const char* name, c
 
     qemu_mutex_unlock(&lock);
 
-    free(path_copy);
+    free(paths);
     return ret;
 }
 
@@ -487,13 +617,17 @@ char* resolve_abs_with_cwd(const char* path, char* out)
     if (path[0] != '/') {
         char* cwd = g_get_current_dir();
         char* abs_base = g_build_filename(cwd, path, NULL);
-        strcpy(out, abs_base);
+        if (!bounded_copy(out, PATH_MAX, abs_base)) {
+            out[0] = '\0';
+        }
         g_free(cwd);
         g_free(abs_base);
         return out;
     }
     else {
-        strcpy(out, path);
+        if (!bounded_copy(out, PATH_MAX, path)) {
+            out[0] = '\0';
+        }
         return out;
     }
 }
