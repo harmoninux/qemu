@@ -12909,9 +12909,9 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
         p = lock_user_string(arg1);
         if (p) {
             if (num == TARGET_NR_listxattr) {
-                ret = get_errno(listxattr(p, b, arg3));
+                ret = get_errno(listxattr(relocate_path_at(AT_FDCWD, p, reloc, true), b, arg3));
             } else {
-                ret = get_errno(llistxattr(p, b, arg3));
+                ret = get_errno(llistxattr(relocate_path_at(AT_FDCWD, p, reloc, false), b, arg3));
             }
         } else {
             ret = -TARGET_EFAULT;
@@ -12947,9 +12947,9 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
             n = lock_user_string(arg2);
             if (p && n) {
                 if (num == TARGET_NR_setxattr) {
-                    ret = get_errno(setxattr(p, n, v, arg4, arg5));
+                    ret = get_errno(setxattr(relocate_path_at(AT_FDCWD, p, reloc, true), n, v, arg4, arg5));
                 } else {
-                    ret = get_errno(lsetxattr(p, n, v, arg4, arg5));
+                    ret = get_errno(lsetxattr(relocate_path_at(AT_FDCWD, p, reloc, false), n, v, arg4, arg5));
                 }
             } else {
                 ret = -TARGET_EFAULT;
@@ -12992,9 +12992,9 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
             n = lock_user_string(arg2);
             if (p && n) {
                 if (num == TARGET_NR_getxattr) {
-                    ret = get_errno(getxattr(p, n, v, arg4));
+                    ret = get_errno(getxattr(relocate_path_at(AT_FDCWD, p, reloc, true), n, v, arg4));
                 } else {
-                    ret = get_errno(lgetxattr(p, n, v, arg4));
+                    ret = get_errno(lgetxattr(relocate_path_at(AT_FDCWD, p, reloc, false), n, v, arg4));
                 }
             } else {
                 ret = -TARGET_EFAULT;
@@ -13031,9 +13031,9 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
             n = lock_user_string(arg2);
             if (p && n) {
                 if (num == TARGET_NR_removexattr) {
-                    ret = get_errno(removexattr(p, n));
+                    ret = get_errno(removexattr(relocate_path_at(AT_FDCWD, p, reloc, true), n));
                 } else {
-                    ret = get_errno(lremovexattr(p, n));
+                    ret = get_errno(lremovexattr(relocate_path_at(AT_FDCWD, p, reloc, false), n));
                 }
             } else {
                 ret = -TARGET_EFAULT;
