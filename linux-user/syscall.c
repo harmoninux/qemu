@@ -580,6 +580,20 @@ abi_long get_errno(abi_long ret)
         return ret;
 }
 
+/*
+ * Debug knob (host process): force the linkat/renameat EACCES fallbacks so they
+ * can be exercised on hosts whose filesystem actually supports the operation.
+ */
+static bool vroot_force_eacces(void)
+{
+    static int forced = -1;
+    if (forced < 0) {
+        const char *v = getenv("QEMU_VROOT_FORCE_EACCES");
+        forced = (v && v[0] && strcmp(v, "0") != 0);
+    }
+    return forced;
+}
+
 const char *target_strerror(int err)
 {
     if (err == QEMU_ERESTARTSYS) {
@@ -9640,39 +9654,83 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
                 return -TARGET_EFAULT;
             p  = lock_user_string(arg2);
             p2 = lock_user_string(arg4);
-            if (!p || !p2)
+            if (!p || !p2) {
                 ret = -TARGET_EFAULT;
-            else {
+            } else {
                 relocate_path_at(arg1, p, reloc, false);
                 relocate_path_at(arg3, p2, reloc2, false);
-                ret = get_errno(linkat(arg1, reloc, arg3, reloc2, arg5));
+                if (vroot_force_eacces()) {
+                    errno = EACCES;
+                    ret = get_errno(-1);
+                } else {
+                    ret = get_errno(linkat(arg1, reloc, arg3, reloc2, arg5));
+                }
                 if (ret < 0 && errno == EACCES) {
-                    //  replace linkat by copy
-                    int from_fd = openat(arg1, reloc, O_RDONLY | O_LARGEFILE);
-                    if (from_fd < 0) {
-                        goto linkat_end;
-                    }
-
+                    /*
+                     * OHOS's HmDFS rejects hard links with EACCES.  Work
+                     * around it by copying the contents of regular files;
+                     * any other EACCES (e.g. a real permission error, or a
+                     * non-regular source) is reported unchanged.
+                     */
+                    int saved_errno = errno;
                     struct stat s;
-                    if (fstat(from_fd, &s) < 0 || !S_ISREG(s.st_mode)) {
-                        errno = ENOENT;
-                        goto linkat_end;
-                    }
-                    int to_fd = creat(reloc2, s.st_mode);
-                    if (to_fd < 0) {
-                        goto linkat_end;
-                    }
+                    int from_fd = -1, to_fd = -1;
+                    bool ok = false;
 
-                    char buf[4096];
-                    int rd;
-                    while ((rd = read(from_fd, buf, sizeof(buf))) > 0) {
-                        write(to_fd, buf, rd);
+                    if (lstat(reloc, &s) == 0 && S_ISREG(s.st_mode)) {
+                        mode_t mode = s.st_mode & 07777 & ~(S_ISUID | S_ISGID);
+                        from_fd = openat(arg1, reloc, O_RDONLY | O_LARGEFILE);
+                        if (from_fd >= 0) {
+                            to_fd = openat(arg3, reloc2,
+                                           O_CREAT | O_WRONLY | O_TRUNC | O_LARGEFILE,
+                                           mode);
+                        }
+                        if (to_fd >= 0) {
+                            char buf[4096];
+                            ssize_t rd;
+
+                            ok = true;
+                            while ((rd = read(from_fd, buf, sizeof(buf))) > 0) {
+                                ssize_t off = 0;
+                                while (off < rd) {
+                                    ssize_t wr = write(to_fd, buf + off, rd - off);
+                                    if (wr < 0) {
+                                        ok = false;
+                                        break;
+                                    }
+                                    off += wr;
+                                }
+                                if (!ok) {
+                                    break;
+                                }
+                            }
+                            if (rd < 0) {
+                                ok = false;
+                            }
+                        }
                     }
-                    ret = 0;
-                    errno = 0;
+                    if (to_fd >= 0) {
+                        if (ok) {
+                            fchmod(to_fd, s.st_mode & 07777 & ~(S_ISUID | S_ISGID));
+                        }
+                        close(to_fd);
+                    }
+                    if (from_fd >= 0) {
+                        close(from_fd);
+                    }
+                    if (!ok) {
+                        //  don't leave a partial file behind
+                        if (to_fd >= 0) {
+                            unlinkat(arg3, reloc2, 0);
+                        }
+                        errno = saved_errno;
+                        ret = get_errno(-1);
+                    } else {
+                        ret = 0;
+                        errno = 0;
+                    }
                 }
             }
-        linkat_end:
             unlock_user(p, arg2, 0);
             unlock_user(p2, arg4, 0);
         }
@@ -10022,37 +10080,51 @@ static abi_long do_syscall1(CPUArchState *cpu_env, int num, abi_long arg1,
             void *p2;
             p  = lock_user_string(arg2);
             p2 = lock_user_string(arg4);
-            if (!p || !p2)
+            if (!p || !p2) {
                 ret = -TARGET_EFAULT;
-            else {
+            } else {
                 relocate_path_at(arg1, p, reloc, false);
                 relocate_path_at(arg3, p2, reloc2, false);
-                ret = get_errno(renameat(arg1, reloc, arg3, reloc2));
+                if (vroot_force_eacces()) {
+                    errno = EACCES;
+                    ret = get_errno(-1);
+                } else {
+                    ret = get_errno(renameat(arg1, reloc, arg3, reloc2));
+                }
                 if (ret < 0 && errno == EACCES) {
+                    /*
+                     * OHOS's HmDFS rejects renaming symlinks with EACCES.
+                     * Recreate the link at the new location instead.  Only
+                     * symlinks are handled; any other EACCES is a genuine
+                     * permission error and is reported unchanged.
+                     */
+                    int saved_errno = errno;
                     struct stat s;
-                    if (lstat(reloc, &s) < 0) {
-                        goto renameat_end;
-                    }
-                    if (!S_ISLNK(s.st_mode)) {
-                        goto renameat_end;
-                    }
+                    bool ok = false;
                     char link[PATH_MAX];
-                    ssize_t sz = readlinkat(arg1, reloc, link, PATH_MAX - 1);
-                    if (sz < 0) {
-                        goto renameat_end;
+
+                    if (lstat(reloc, &s) == 0 && S_ISLNK(s.st_mode)) {
+                        ssize_t sz = readlinkat(arg1, reloc, link, PATH_MAX - 1);
+                        if (sz >= 0) {
+                            link[sz] = '\0';
+                            if (symlinkat(link, arg3, reloc2) == 0) {
+                                if (unlinkat(arg1, reloc, 0) == 0) {
+                                    ok = true;
+                                } else {
+                                    unlinkat(arg3, reloc2, 0);
+                                }
+                            }
+                        }
                     }
-                    link[sz] = '\0';
-                    if (symlinkat(link, arg3, reloc2) < 0) {
-                        goto renameat_end;
+                    if (ok) {
+                        ret = 0;
+                        errno = 0;
+                    } else {
+                        errno = saved_errno;
+                        ret = get_errno(-1);
                     }
-                    if (unlinkat(arg1, reloc, 0) < 0) {
-                        goto renameat_end;
-                    }
-                    ret = 0;
-                    errno = 0;
                 }
             }
-        renameat_end:
             unlock_user(p2, arg4, 0);
             unlock_user(p, arg2, 0);
         }
