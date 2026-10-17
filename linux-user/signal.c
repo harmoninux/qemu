@@ -219,6 +219,7 @@ int do_sigprocmask(int how, const sigset_t *set, sigset_t *oldset)
 
         switch (how) {
         case SIG_BLOCK:
+            sigorset(&ts->signal_mask, &ts->signal_mask, set);
             break;
         case SIG_UNBLOCK:
             for (i = 1; i <= NSIG; ++i) {
@@ -1329,6 +1330,7 @@ static void handle_pending_signal(CPUArchState *cpu_env, int sig,
         /* block signals in the handler */
         blocked_set = ts->in_sigsuspend ?
             &ts->sigsuspend_mask : &ts->signal_mask;
+        sigorset(&ts->signal_mask, blocked_set, &set);
         ts->in_sigsuspend = 0;
 
         /* if the CPU is in VM86 mode, we restore the 32 bit values */
